@@ -170,31 +170,28 @@ func perfRecordSample(head uint64, mmapBuf *perfEventMmapPage, profConfig *cpuPr
 	}
 }
 
-func perfStartCounter(fd int32) bool {
+func perfStartCounter(fd int32) error {
 	err := ioctl(fd, _PERF_EVENT_IOC_ENABLE, uintptr(0))
 	if err != 0 {
-		println("Failed to enable the event count")
-		return false
+		return errorString("Failed to enable the event count")
 	}
-	return true
+	return nil
 }
 
-func perfStopCounter(fd int32) bool {
+func perfStopCounter(fd int32) error {
 	err := ioctl(fd, _PERF_EVENT_IOC_DISABLE, uintptr(0))
 	if err != 0 {
-		println("Failed to disable the event count")
-		return false
+		return errorString("Failed to disable the event count")
 	}
-	return true
+	return nil
 }
 
-func perfResetCounter(fd int32) bool {
+func perfResetCounter(fd int32) error {
 	err := ioctl(fd, _PERF_EVENT_IOC_RESET, uintptr(0))
 	if err != 0 {
-		println("Failed to reset the event count")
-		return false
+		return errorString("Failed to reset the event count")
 	}
-	return true
+	return nil
 }
 
 func perfReadCounter(fd int32, val *uint64) bool {

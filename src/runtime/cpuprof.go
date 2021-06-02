@@ -174,17 +174,16 @@ func sanitizeCPUProfileConfig(profConfig *cpuProfileConfig) {
 // TODO: should we make this function return an error?
 //
 //go:linkname runtime_pprof_setCPUProfileConfig runtime/pprof.setCPUProfileConfig
-func runtime_pprof_setCPUProfileConfig(eventId cpuEvent, profConfig *cpuProfileConfig) {
+func runtime_pprof_setCPUProfileConfig(eventId cpuEvent, profConfig *cpuProfileConfig) error {
 	if eventId >= _CPUPROF_EVENTS_MAX {
-		return
+		return errorString("runtime: unknown eventId")
 	}
 
 	lock(&cpuprof[eventId].lock)
 	defer unlock(&cpuprof[eventId].lock)
 	if profConfig != nil {
 		if cpuprof[eventId].on || cpuprof[eventId].log != nil {
-			print("runtime: cannot set cpu profile config until previous profile has finished.\n")
-			return
+			return errorString("runtime: cannot set cpu profile config until previous profile has finished.")
 		}
 
 		cpuprof[eventId].on = true
@@ -207,13 +206,14 @@ func runtime_pprof_setCPUProfileConfig(eventId cpuEvent, profConfig *cpuProfileC
 		cfg := make([]cpuProfileConfig, 1, 1)
 		cfg[0] = *profConfig
 		sanitizeCPUProfileConfig(&cfg[0])
-		setcpuprofileconfig(eventId, &cfg[0])
+		return setcpuprofileconfig(eventId, &cfg[0])
 	} else if cpuprof[eventId].on {
-		setcpuprofileconfig(eventId, nil)
 		cpuprof[eventId].on = false
 		cpuprof[eventId].addExtra()
 		cpuprof[eventId].log.close()
+		return setcpuprofileconfig(eventId, nil)
 	}
+	return nil
 }
 
 // add adds the stack trace to the profile.

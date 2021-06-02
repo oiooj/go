@@ -524,12 +524,14 @@ func signalM(mp *m, sig int) {
 //go:noescape
 func fcntl(fd, cmd int32, arg uintptr) int32
 
-func setThreadPMUProfiler(eventId cpuEvent, profConfig *cpuProfileConfig) {
+func setThreadPMUProfiler(eventId cpuEvent, profConfig *cpuProfileConfig) error {
 	_g_ := getg()
 	resourceHandle := (*cpuProfileResource)(_g_.m.cpuProfileHandle[eventId])
 	// First, stop and close the event resources.
 	if _g_.m.profConfig[eventId] != nil {
-		perfStopCounter(resourceHandle.eventFd)
+		if err := perfStopCounter(resourceHandle.eventFd); err != nil {
+			return err
+		}
 		closefd(resourceHandle.eventFd)
 		_g_.m.profConfig[eventId] = nil
 	}
@@ -539,7 +541,7 @@ func setThreadPMUProfiler(eventId cpuEvent, profConfig *cpuProfileConfig) {
 	}
 	if profConfig == nil {
 		// The request was for stopping.
-		return
+		return nil
 	}
 
 	// profConfig != nil
@@ -566,36 +568,32 @@ func setThreadPMUProfiler(eventId cpuEvent, profConfig *cpuProfileConfig) {
 		//dont print because a filed perfEventOpen can be enabled later.
 		//perfEventOpen can fail due to interrupted system call.
 		//println("Linux perf event open failed")
-		return
+		return nil
 	}
 
 	// create mmap buffer for this file
 	mmapBuf := perfSetMmap(fd)
 	if mmapBuf == nil {
 		closefd(fd)
-		println("Failed to set perf mmap")
-		return
+		return errorString("Failed to set perf mmap")
 	}
 	flag := fcntl(fd, _F_GETFL, 0)
 	if flag == -1 {
 		closefd(fd)
 		perfUnsetMmap(mmapBuf)
-		println("fcntl failed to get _F_GETFL for the PMU event")
-		return
+		return errorString("fcntl failed to get _F_GETFL for the PMU event")
 	}
 	err := fcntl(fd, _F_SETFL, uintptr(flag|_O_ASYNC))
 	if err != 0 {
 		closefd(fd)
 		perfUnsetMmap(mmapBuf)
-		println("fcntl failed to set _F_SETFL _O_ASYNC for the PMU event")
-		return
+		return errorString("fcntl failed to set _F_SETFL _O_ASYNC for the PMU event")
 	}
 	err = fcntl(fd, _F_SETSIG, uintptr(_SIGPROF))
 	if err != 0 {
 		closefd(fd)
 		perfUnsetMmap(mmapBuf)
-		println("fcntl failed to set _F_SETSIG _SIGPROF for the PMU event")
-		return
+		return errorString("fcntl failed to set _F_SETSIG _SIGPROF for the PMU event")
 	}
 
 	fOwnEx := fOwnerEx{_F_OWNER_TID, int32(gettid())}
@@ -603,29 +601,27 @@ func setThreadPMUProfiler(eventId cpuEvent, profConfig *cpuProfileConfig) {
 	if err != 0 {
 		closefd(fd)
 		perfUnsetMmap(mmapBuf)
-		println("fcntl failed to set the owner of the perf event file")
-		return
+		return errorString("fcntl failed to set the owner of the perf event file")
 	}
 
 	_g_.m.profConfig[eventId] = profConfig
 	resourceHandle.eventMmapBuf = mmapBuf
 	resourceHandle.eventFd = fd
-	if !perfResetCounter(fd) {
+	if err := perfResetCounter(fd); err != nil {
 		closefd(fd)
 		perfUnsetMmap(mmapBuf)
 		_g_.m.profConfig[eventId] = nil
 		resourceHandle.eventMmapBuf = nil
-		println("ioctl failed to reset the perf event counter")
-		return
+		return err
 	}
-	if !perfStartCounter(fd) {
+	if err := perfStartCounter(fd); err != nil {
 		closefd(fd)
 		perfUnsetMmap(mmapBuf)
 		_g_.m.profConfig[eventId] = nil
 		resourceHandle.eventMmapBuf = nil
-		println("ioctl failed to start the perf event counter")
-		return
+		return err
 	}
+	return nil
 }
 
 //go:nowritebarrierrec

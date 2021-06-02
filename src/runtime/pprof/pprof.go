@@ -823,7 +823,9 @@ func startCPUProfileWithConfig(opt ProfilingOption, moreOpts ...ProfilingOption)
 	// Now arm those events
 	for i := _CPUPROF_FIRST_EVENT; i < _CPUPROF_EVENTS_MAX; i++ {
 		if cpu.activeConfig[i] != nil {
-			setCPUProfileConfig(i, cpu.activeConfig[i])
+			if err := setCPUProfileConfig(i, cpu.activeConfig[i]); err != nil {
+				return cleanupCPUPriofileOnError(err)
+			}
 		}
 	}
 
@@ -1086,7 +1088,7 @@ func readProfile(eventId cpuEvent) (data []uint64, tags []unsafe.Pointer, eof bo
 //      _CPUPROF_HW_CACHE_MISSES, _CPUPROF_HW_BRANCH_INSTRUCTIONS, _CPUPROF_HW_BRANCH_MISSES, _CPUPROF_HW_RAW
 // profConfig: provides additional configurations when enabling the specified event.
 //             A nil profConfig results in disabling the said event.
-func setCPUProfileConfig(eventId cpuEvent, profConfig *cpuProfileConfig)
+func setCPUProfileConfig(eventId cpuEvent, profConfig *cpuProfileConfig) error
 
 func profileWriter() {
 	var b [_CPUPROF_EVENTS_MAX]*profileBuilder

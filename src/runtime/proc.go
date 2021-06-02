@@ -2509,7 +2509,7 @@ func gcstopm() {
 	stopm()
 }
 
-var setThreadPMUProfilerFunc func(eventId cpuEvent, profConfig *cpuProfileConfig)
+var setThreadPMUProfilerFunc func(eventId cpuEvent, profConfig *cpuProfileConfig) error
 
 // Schedules gp to run on the current M.
 // If inheritTime is true, gp inherits the remaining time in the
@@ -4610,12 +4610,12 @@ func setsSP(pc uintptr) bool {
 
 // Note that profConfig is created by runtim_pprof_setCPUProfileConfig() and its fields are unmodified.
 // Hence pointer copies and comparisons inside the runtime are ok.
-func setcpuprofileconfig(eventId cpuEvent, profConfig *cpuProfileConfig) {
+func setcpuprofileconfig(eventId cpuEvent, profConfig *cpuProfileConfig) error {
 	// cannot take any PMU profiling on systems that have not registered their setThreadPMUProfilerFunc.
 	// setThreadPMUProfilerFunc is a write once variable.
 	// Hence, there cannot be any race from checking non-nil to invoking them.
 	if (eventId != _CPUPROF_OS_TIMER) && (setThreadPMUProfilerFunc == nil) {
-		return
+		return errorString("runtime: setThreadPMUProfilerFunc is not initialized")
 	}
 
 	// Disable preemption, otherwise we can be rescheduled to another thread
@@ -4629,7 +4629,9 @@ func setcpuprofileconfig(eventId cpuEvent, profConfig *cpuProfileConfig) {
 	if eventId == _CPUPROF_OS_TIMER {
 		setThreadOSTimerProfiler(nil)
 	} else {
-		setThreadPMUProfilerFunc(eventId, nil)
+		if err := setThreadPMUProfilerFunc(eventId, nil); err != nil {
+			return err
+		}
 	}
 
 	_g_.m.profileSetup = 1
@@ -4666,10 +4668,13 @@ func setcpuprofileconfig(eventId cpuEvent, profConfig *cpuProfileConfig) {
 		if eventId == _CPUPROF_OS_TIMER {
 			setThreadOSTimerProfiler(profConfig)
 		} else {
-			setThreadPMUProfilerFunc(eventId, profConfig)
+			if err := setThreadPMUProfilerFunc(eventId, profConfig); err != nil {
+				return err
+			}
 		}
 	}
 	_g_.m.locks--
+	return nil
 }
 
 // init initializes pp, which may be a freshly allocated p or a
